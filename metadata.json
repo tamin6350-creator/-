@@ -1,0 +1,6 @@
+{
+  "name": "TGJU Price Tracker",
+  "description": "سامانه هوشمند پایش لحظه ای قیمت طلا، نقره و ارز از سایت TGJU به همراه سیستم هشدار تغییرات",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
