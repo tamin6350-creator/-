@@ -1,0 +1,6 @@
+{
+  "appId": "com.zarrin.marketanalysis",
+  "appName": "سامانه هوشمند زربین",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

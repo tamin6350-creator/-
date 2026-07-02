@@ -6,6 +6,8 @@ import { DashboardFilters } from "./components/DashboardFilters";
 import { playAlertChime, playClickSound } from "./utils/audio";
 import { AnalogClock } from "./components/AnalogClock";
 import { PredictionPanel } from "./components/PredictionPanel";
+import { GoldCoinLogo } from "./components/GoldCoinLogo";
+import { AndroidWidget } from "./components/AndroidWidget";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -24,7 +26,11 @@ import {
   HelpCircle,
   XCircle,
   Clock,
-  Sparkles
+  Sparkles,
+  ChevronLeft,
+  Wifi,
+  WifiOff,
+  LogOut
 } from "lucide-react";
 
 const DEFAULT_PRESET_KEYS = ["geram18", "ons", "silver_ons", "sekke", "mithqal", "price_dollar_rl"];
@@ -42,6 +48,11 @@ export default function App() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   
+  // Custom States for Android App & Offline
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string | null>(null);
+
   // Settings
   const [pollingInterval, setPollingInterval] = useState(30000); // 30 seconds
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
@@ -73,8 +84,47 @@ export default function App() {
     isSoundEnabledRef.current = isSoundEnabled;
   }, [isSoundEnabled]);
 
+  // Mobile API URL resolver (prevents 404 relative fetch on Android WebView/APK)
+  const getApiUrl = (path: string) => {
+    const isLocalOrWebview = 
+      window.location.protocol.startsWith("file") || 
+      window.location.protocol.startsWith("capacitor") || 
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.origin.includes("3000") ||
+      !window.location.origin.startsWith("http");
+
+    if (isLocalOrWebview) {
+      // Connect to the live deployed server URL
+      return `https://ais-dev-t2ysp5iox5erolv52rewic-202927278845.us-east1.run.app${path}`;
+    }
+    return path;
+  };
+
   // --- Initial Mount & Load Storage ---
   useEffect(() => {
+    // A. Intercept Back Button for Android App exits
+    window.history.pushState({ noExit: true }, "");
+    const handlePopState = (event: PopStateEvent) => {
+      // Re-push immediately to lock history, then show our clean confirmation dialog
+      window.history.pushState({ noExit: true }, "");
+      setIsExitDialogOpen(true);
+    };
+    window.addEventListener("popstate", handlePopState);
+
+    // B. Online / Offline network listeners
+    const handleOnline = () => {
+      setIsOffline(false);
+      setErrorMessage("");
+      fetchData();
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      setErrorMessage("ارتباط با اینترنت برقرار نیست. در حال نمایش اطلاعات ذخیره‌شده.");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
     // 1. Selected keys to display
     const savedKeys = localStorage.getItem("tgju_selected_keys");
     if (savedKeys) {
@@ -124,32 +174,70 @@ export default function App() {
       setCountdown(parseInt(savedInterval) / 1000);
     }
 
+    // 7. Load Offline Cache Fallback instantly before fetch resolves
+    const cachedPrices = localStorage.getItem("tgju_cached_prices");
+    if (cachedPrices) {
+      try {
+        setAllItems(JSON.parse(cachedPrices));
+      } catch (e) {}
+    }
+    const cachedTime = localStorage.getItem("tgju_last_updated_time");
+    if (cachedTime) {
+      setLastUpdatedTime(cachedTime);
+    }
+
+    // Ask for system notification permissions early for price triggers
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+
+    // Fresh fetch immediately on app load
     fetchData();
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   // --- Core Pricing Fetch Handler ---
   const fetchData = async (isManual = false) => {
+    // A. Check offline status immediately to prevent hanging loads
+    if (!navigator.onLine) {
+      setIsOffline(true);
+      setErrorMessage("ارتباط با اینترنت برقرار نیست. در حال نمایش اطلاعات ذخیره‌شده.");
+      setRefreshing(false);
+      setLoading(false);
+      return;
+    }
+
     if (isManual) setRefreshing(true);
     else setLoading(true);
 
     try {
-      const response = await fetch("/api/prices");
+      const url = getApiUrl("/api/prices");
+      const response = await fetch(url);
       if (!response.ok) throw new Error("خطا در پاسخ‌دهی سرور مرکزی");
       
       const data: ApiResponse = await response.json();
       
       setApiSource(data.source);
       setLastUpdated(new Date());
+      setIsOffline(false);
       setErrorMessage("");
 
+      const PersianTime = new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const PersianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { day: "numeric", month: "long", year: "numeric" }).format(new Date());
+      const fullTimeStr = `${PersianDate} ساعت ${PersianTime}`;
+      setLastUpdatedTime(fullTimeStr);
+      localStorage.setItem("tgju_last_updated_time", fullTimeStr);
+
       // Combine server fetched items with custom items
-      // If server does not provide custom keys, we append them
       let updatedItems = [...data.items];
       
-      // Ensure any custom local item has a placeholder or gets fetched if server parsed it
       customItems.forEach(custom => {
         if (!updatedItems.some(ui => ui.key === custom.key)) {
-          // If the server didn't find it, simulate minor fluctuation based on last price
           let parsedPrice = parseFloat(custom.price.replace(/,/g, ""));
           if (isNaN(parsedPrice)) parsedPrice = 100000;
           
@@ -169,15 +257,24 @@ export default function App() {
       });
 
       setAllItems(updatedItems);
+      localStorage.setItem("tgju_cached_prices", JSON.stringify(updatedItems));
       processPriceHistoryAndAlerts(updatedItems);
 
     } catch (err: any) {
       console.error(err);
-      setErrorMessage("ارتباط با سایت مرجع با اختلال مواجه شد. در حال استفاده از اطلاعات محلی.");
+      setIsOffline(true);
+      setErrorMessage("ارتباط با سرور مرکزی با اختلال مواجه شد. در حال استفاده از اطلاعات محلی.");
+      
+      // Load offline cache fallback
+      const cached = localStorage.getItem("tgju_cached_prices");
+      if (cached) {
+        try {
+          setAllItems(JSON.parse(cached));
+        } catch (e) {}
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
-      // Reset countdown
       setCountdown(pollingInterval / 1000);
     }
   };
@@ -194,7 +291,6 @@ export default function App() {
           if (!nextHistory[item.key]) {
             nextHistory[item.key] = [];
           }
-          // Push and keep latest 10 data points
           const currentArr = [...nextHistory[item.key]];
           currentArr.push(rawNum);
           if (currentArr.length > 10) currentArr.shift();
@@ -244,6 +340,18 @@ export default function App() {
           `🔔 هشدار: قیمت [${alert.itemName}] در ساعت ${triggerTime} از آستانه عبور کرد! (قیمت: ${matchedItem.price})`,
           ...prev
         ]);
+
+        // Trigger Mobile/Device Notification System
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(`🔔 زنگ هشدار زربین: ${alert.itemName}`, {
+              body: `قیمت از آستانه عبور کرد! ارزش فعلی: ${matchedItem.price} ریال`,
+              silent: false
+            });
+          } catch (e) {
+            console.error("Local Notification trigger failed", e);
+          }
+        }
 
         return newlyTriggeredAlert;
       }
@@ -404,113 +512,190 @@ export default function App() {
     playClickSound();
   };
 
+  // --- Custom entrance animated loading splash screen with real-time updates ---
+  if (loading) {
+    return (
+      <div dir="rtl" className="font-sans min-h-screen bg-[#070709] text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden select-none">
+        {/* Decorative ambient glowing backdrops */}
+        <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-amber-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-amber-600/5 rounded-full blur-[120px] pointer-events-none animate-pulse"></div>
+
+        {/* Floating background grids for modern tech layout */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:32px_32px] opacity-[0.03] pointer-events-none"></div>
+
+        <div className="relative z-10 flex flex-col items-center text-center max-w-md w-full space-y-8 animate-soft-pulse">
+          
+          {/* Glowing 3D Gold Logo */}
+          <div className="relative">
+            <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-2xl animate-ping opacity-40"></div>
+            <GoldCoinLogo size={110} className="relative z-10 transition-transform duration-700 hover:scale-105" />
+          </div>
+
+          <div className="space-y-3">
+            <h1 className="text-xl md:text-2xl font-black text-white tracking-wide">سامانه هوشمند پایش قیمت زربین</h1>
+            <p className="text-xs text-slate-400 font-medium">به‌روزرسانی خودکار و همگام‌سازی لحظه‌ای نرخ‌های بازار طلا و سکه</p>
+          </div>
+
+          {/* Loading status bar */}
+          <div className="w-full bg-slate-900/40 border border-slate-800/60 p-5 rounded-2xl space-y-4 backdrop-blur-md">
+            <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+              <span className="flex items-center gap-1.5 font-bold text-amber-500">
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
+                در حال بارگذاری زنده نرخ‌ها...
+              </span>
+              <span className="font-bold text-slate-300">۱۰۰٪</span>
+            </div>
+
+            {/* Pulsating premium gold loader */}
+            <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-900">
+              <div className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full w-full animate-pulse"></div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 text-right leading-relaxed">
+              * اولین اتصال به دلیل دریافت و صحت‌سنجی نرخ‌ها از شبکه اصلی (TGJU) ممکن است چند ثانیه زمان ببرد.
+            </p>
+          </div>
+
+          {/* Offline local access fallback */}
+          {allItems.length > 0 && (
+            <button
+              onClick={() => setLoading(false)}
+              className="w-full py-3 bg-slate-900/60 hover:bg-slate-850 text-slate-300 hover:text-white rounded-xl border border-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+            >
+              <span>ورود فوری آفلاین (با اطلاعات قبلی)</span>
+              <ChevronLeft className="w-4 h-4 text-amber-500" />
+            </button>
+          )}
+
+        </div>
+      </div>
+    );
+  }
+
   const activeDisplayItems = allItems.filter(item => selectedKeys.includes(item.key));
 
-   return (
-    <div dir="rtl" className="font-sans min-h-screen bg-[#0a0a0c] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-white">
+  return (
+    <div dir="rtl" className="font-sans min-h-screen bg-[#070709] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-white relative">
       
+      {/* Decorative ambient glowing spots in background */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-amber-500/5 to-transparent rounded-full blur-[150px] pointer-events-none"></div>
+      <div className="absolute top-[400px] left-0 w-[500px] h-[500px] bg-gradient-to-tr from-yellow-500/5 to-transparent rounded-full blur-[150px] pointer-events-none"></div>
+
       {/* HEADER SECTION */}
-      <header id="app-header" className="sticky top-0 z-40 bg-[#0a0a0c]/95 border-b border-slate-900/60 backdrop-blur-md px-4 py-4 md:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <header id="app-header" className="sticky top-0 z-40 bg-[#070709]/90 border-b border-slate-900/80 backdrop-blur-md px-4 py-3 md:px-8 shadow-md">
+        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-5">
           
-          {/* Logo Title */}
+          {/* Right side: Logo & Title */}
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20">
-              <TrendingUp className="w-5 h-5 stroke-[2.5]" />
+            <div className="relative group cursor-pointer">
+              <div className="absolute inset-0 bg-amber-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300 opacity-60"></div>
+              <GoldCoinLogo size={44} className="relative z-10 hover:scale-105 transition-transform" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base md:text-lg font-black tracking-wide text-white">سامانه هوشمند پایش قیمت زربین (TGJU)</h1>
-                <span className="text-[10px] bg-slate-900 text-amber-500 font-mono font-bold px-2 py-0.5 rounded-full border border-slate-800">
-                  GoldTracker
+                <span className="text-[10px] bg-slate-900 text-amber-500 font-mono font-bold px-2 py-0.5 rounded-full border border-slate-800 animate-pulse">
+                  v1.2.0-Pro
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">نرخ زنده مسکوکات، طلا، نقره و متغیرهای دلخواه متصل به مرجع قیمت‌ها</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-medium leading-tight">نرخ زنده مسکوکات، طلا، نقره و متغیرهای دلخواه متصل به مرجع قیمت‌ها</p>
             </div>
           </div>
 
-          {/* Left Block (Analog Clock + Tools) */}
-          <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-            {/* Connection, Countdown & Tools */}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              
-              {/* Direct TGJU or Simulation status badge */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
-                <span className={`relative flex h-2 w-2`}>
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    apiSource === "tgju" ? "bg-emerald-400" : "bg-amber-400"
-                  }`}></span>
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                    apiSource === "tgju" ? "bg-emerald-500" : "bg-amber-500"
-                  }`}></span>
-                </span>
-                <span className="text-[10px] text-slate-300 font-medium">
-                  {apiSource === "tgju" ? "اتصال مستقیم به TGJU" : "شبیه‌ساز هوشمند (آفلاین)"}
-                </span>
+          {/* Center-Left side: Connection & Online status with date */}
+          <div className="flex flex-wrap items-center justify-center lg:justify-end gap-3 w-full lg:w-auto">
+            
+            {/* Dynamic Internet / Offline Banner */}
+            {isOffline ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 shadow-md">
+                <WifiOff className="w-3.5 h-3.5 animate-bounce" />
+                <span className="text-[10px] font-bold">آفلاین - نمایش داده‌های ذخیره شده {lastUpdatedTime ? `(${lastUpdatedTime})` : ""}</span>
               </div>
-
-              {/* Interval Selection */}
-              <div className="flex items-center gap-1.5 bg-slate-900/60 border border-slate-800/80 p-1 rounded-xl text-xs">
-                <span className="text-[10px] text-slate-500 pr-1">به‌روزرسانی:</span>
-                <button
-                  onClick={() => handleIntervalChange(10)}
-                  className={`px-2 py-1 rounded-lg cursor-pointer transition-all ${
-                    pollingInterval === 10000 ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  ۱۰ث
-                </button>
-                <button
-                  onClick={() => handleIntervalChange(30)}
-                  className={`px-2 py-1 rounded-lg cursor-pointer transition-all ${
-                    pollingInterval === 30000 ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  ۳۰ث
-                </button>
-                <button
-                  onClick={() => handleIntervalChange(60)}
-                  className={`px-2 py-1 rounded-lg cursor-pointer transition-all ${
-                    pollingInterval === 60000 ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  ۱د
-                </button>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 shadow-md">
+                <Wifi className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold">بروزرسانی زنده فعال</span>
               </div>
+            )}
 
-              {/* Countdown Badge */}
-              <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-800/80 px-2.5 py-1.5 rounded-xl text-xs font-mono text-slate-300">
-                <Clock className="w-3.5 h-3.5 text-slate-500" />
-                <span>{countdown}ث</span>
-              </div>
-
-              {/* Sound Toggler */}
-              <button
-                onClick={toggleSound}
-                className={`p-2 rounded-xl border transition-all cursor-pointer ${
-                  isSoundEnabled
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
-                    : "bg-slate-900 border border-slate-800 text-slate-500 hover:text-slate-300"
-                }`}
-                title={isSoundEnabled ? "صدا فعال" : "صدا غیرفعال"}
-              >
-                {isSoundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              </button>
-
-              {/* Manual Refresh */}
-              <button
-                onClick={() => { playClickSound(); fetchData(true); }}
-                disabled={refreshing}
-                className="p-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 rounded-xl transition-all cursor-pointer flex items-center justify-center"
-                title="به‌روزرسانی دستی"
-              >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-slate-400" : ""}`} />
-              </button>
-
+            {/* Direct TGJU or Simulation status badge */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs shadow-inner">
+              <span className={`relative flex h-2 w-2`}>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  apiSource === "tgju" ? "bg-emerald-400" : "bg-amber-400"
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                  apiSource === "tgju" ? "bg-emerald-500" : "bg-amber-500"
+                }`}></span>
+              </span>
+              <span className="text-[10px] text-slate-300 font-medium font-mono">
+                {apiSource === "tgju" ? "TGJU Live API" : "Simulated Price Mode"}
+              </span>
             </div>
 
-            {/* Beautiful Analog Clock */}
-            <AnalogClock />
+            {/* Interval Selection */}
+            <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-800/80 p-1 rounded-xl text-xs shadow-inner">
+              <span className="text-[9px] text-slate-500 pr-1.5">فرکانس:</span>
+              <button
+                onClick={() => handleIntervalChange(10)}
+                className={`px-2 py-0.5 rounded-lg cursor-pointer text-[10px] transition-all ${
+                  pollingInterval === 10000 ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ۱۰ث
+              </button>
+              <button
+                onClick={() => handleIntervalChange(30)}
+                className={`px-2 py-0.5 rounded-lg cursor-pointer text-[10px] transition-all ${
+                  pollingInterval === 30000 ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ۳۰ث
+              </button>
+              <button
+                onClick={() => handleIntervalChange(60)}
+                className={`px-2 py-0.5 rounded-lg cursor-pointer text-[10px] transition-all ${
+                  pollingInterval === 60000 ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ۶۰ث
+              </button>
+            </div>
+
+            {/* Countdown Badge */}
+            <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-800/80 px-2.5 py-1.5 rounded-xl text-xs font-mono text-slate-300 shadow-inner">
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span>{countdown}ث</span>
+            </div>
+
+            {/* Sound Toggler */}
+            <button
+              onClick={toggleSound}
+              className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                isSoundEnabled
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 shadow-lg"
+                  : "bg-slate-900 border border-slate-800 text-slate-500 hover:text-slate-300"
+              }`}
+              title={isSoundEnabled ? "صدا فعال" : "صدا غیرفعال"}
+            >
+              {isSoundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
+            {/* Manual Refresh */}
+            <button
+              onClick={() => { playClickSound(); fetchData(true); }}
+              disabled={refreshing || isOffline}
+              className="p-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-lg"
+              title="به‌روزرسانی دستی"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-slate-400" : ""}`} />
+            </button>
+
+            {/* Vertical Analog Clock placed sequentially on the left side of desktop header */}
+            <div className="shrink-0 lg:ml-2">
+              <AnalogClock />
+            </div>
+
           </div>
 
         </div>
@@ -537,7 +722,7 @@ export default function App() {
                 <span>دستیار پایش هوشمند طلا و ارز</span>
               </div>
               <h2 className="text-xl md:text-2xl font-bold tracking-tight text-white">داشبورد شخصی‌سازی‌شده و زنگ هشدار تغییر قیمت</h2>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
+              <p className="text-xs text-slate-400 leading-relaxed max-w-2xl font-medium">
                 با تیک‌باکس‌های شخصی‌سازی می‌توانید تعداد متغیرها را مدیریت کنید. برای ثبت هشدار تغییر قیمت، دکمه‌ی «هشدار+» را روی هر کارت بزنید تا به صورت زنده نوسانات قیمتی بازار را پیگیری کنید.
               </p>
             </div>
@@ -636,33 +821,22 @@ export default function App() {
               <Activity className="w-4 h-4 text-amber-500" />
               دیده‌بان بازار قیمت‌های منتخب شما ({activeDisplayItems.length})
             </h2>
-            {lastUpdated && (
-              <span className="text-[10px] text-slate-500 font-mono">
-                آخرین به‌روزرسانی زنده: {lastUpdated.toLocaleTimeString("fa-IR")}
+            {lastUpdatedTime && (
+              <span className="text-[10px] text-slate-500 font-medium">
+                آخرین به‌روزرسانی: {lastUpdatedTime}
               </span>
             )}
           </div>
 
-          {loading && allItems.length === 0 ? (
-            <div className="bg-slate-950/20 border border-slate-800/80 rounded-2xl p-16 text-center flex flex-col items-center justify-center gap-4">
-              <div className="relative">
-                <div className="h-12 w-12 rounded-full border-2 border-t-amber-500 border-slate-800 animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-400 font-bold">TGJU</div>
-              </div>
-              <div>
-                <p className="text-xs text-slate-300 font-bold">در حال برقراری ارتباط با سایت مرجع و استخراج اطلاعات...</p>
-                <p className="text-[10px] text-slate-500 mt-1">نرخ‌های طلا، نقره و ارزهای بین‌المللی در حال بارگذاری است.</p>
-              </div>
-            </div>
-          ) : activeDisplayItems.length === 0 ? (
+          {activeDisplayItems.length === 0 ? (
             <div className="bg-slate-950/20 border border-slate-800/80 rounded-2xl p-16 text-center flex flex-col items-center justify-center gap-4">
               <div className="p-4 bg-slate-900 text-slate-500 rounded-full">
                 <Search className="w-6 h-6" />
               </div>
               <div>
                 <p className="text-xs text-slate-300 font-bold">هیچ متغیری برای نمایش تیک نخورده است</p>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  لطفاً با استفاده از دکمه‌ی <span className="text-amber-400 font-semibold cursor-pointer" onClick={() => setIsFilterPanelOpen(true)}>«⚙️ شخصی‌سازی قیمت‌ها»</span> تیک متغیرهای مورد نظر خود را فعال کنید.
+                <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                  لطفاً با استفاده از دکمه‌ی <span className="text-amber-400 font-bold cursor-pointer" onClick={() => setIsFilterPanelOpen(true)}>«⚙️ شخصی‌سازی قیمت‌ها»</span> تیک متغیرهای مورد نظر خود را فعال کنید.
                 </p>
               </div>
             </div>
@@ -679,7 +853,6 @@ export default function App() {
                     onClickAlert={() => {
                       setAlertTargetKey(item.key);
                       setIsAlertPanelOpen(true);
-                      // Scroll to alert configuration
                       document.getElementById("app-body")?.scrollIntoView({ behavior: "smooth" });
                     }}
                   />
@@ -691,6 +864,9 @@ export default function App() {
 
         {/* ANALYTICAL PREDICTION & COMPARISON PANEL */}
         <PredictionPanel currentPrices={allItems} />
+
+        {/* ANDROID HOMESCREEN WIDGET MOCK & DETAILS */}
+        <AndroidWidget items={allItems} onRefresh={() => fetchData(true)} />
 
         {/* ALERTS HISTORY LOGS & SYSTEM INFO (BENTO COMPONENT) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -712,7 +888,7 @@ export default function App() {
                   {alertLogs.map((log, index) => (
                     <div key={index} className="text-[10px] bg-slate-950/60 border border-slate-900 p-3 rounded-xl text-slate-300 font-mono flex items-start gap-2.5">
                       <span className="text-rose-500">⚡</span>
-                      <span className="leading-relaxed">{log}</span>
+                      <span className="leading-relaxed font-bold">{log}</span>
                     </div>
                   ))}
                 </div>
@@ -731,14 +907,14 @@ export default function App() {
                 <HelpCircle className="w-4 h-4 text-amber-500" />
                 راهنمای کدهای اختصاصی TGJU
               </h3>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
+              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
                 سایت شبکه اطلاع‌رسانی طلا و ارز (TGJU) قیمت‌ها را در قالب ردیف‌های HTML با ویژگی <code className="text-amber-500 bg-slate-900/80 px-1.5 py-0.5 rounded text-[10px] font-mono">data-market-row</code> مدیریت می‌کند. این برنامه به صورت خودکار شناسه مربوطه را خوانده و زنگ هشدار آن را فعال می‌سازد.
               </p>
             </div>
             
-            <div className="pt-3 border-t border-slate-800/40 mt-4 text-[10px] text-slate-500 flex items-center justify-between font-mono">
-              <span>توسعه‌یافته برای Android & Web</span>
-              <span className="text-amber-500 font-bold">v1.2.0</span>
+            <div className="pt-3 border-t border-slate-800/40 mt-4 text-[10px] text-slate-500 flex items-center justify-between font-mono font-bold">
+              <span>توسعه‌یافته برای Android Studio & Capacitor</span>
+              <span className="text-amber-500 font-bold">v1.2.0-Pro</span>
             </div>
           </div>
 
@@ -753,10 +929,56 @@ export default function App() {
           <div className="flex gap-4">
             <span className="hover:text-slate-400 transition-colors">قوانین و سلب مسئولیت</span>
             <span>•</span>
-            <span className="hover:text-slate-400 transition-colors">پشتیبانی اندروید</span>
+            <span className="hover:text-slate-400 transition-colors font-bold">سازگار با اندروید استودیو</span>
           </div>
         </div>
       </footer>
+
+      {/* EXIT APP CONFIRMATION MODAL (Intercepts Back Button) */}
+      {isExitDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm select-none">
+          <div className="bg-[#121215] border border-slate-800 rounded-3xl max-w-sm w-full p-6 text-center space-y-5 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl pointer-events-none"></div>
+            
+            <div className="h-12 w-12 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center mx-auto animate-soft-pulse">
+              <LogOut className="w-5 h-5" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-black text-white">خروج از سامانه زربین</h3>
+              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">آیا مطمئن هستید که می‌خواهید از برنامه پایش قیمت خارج شوید؟</p>
+            </div>
+
+            <div className="flex gap-2.5 pt-1.5">
+              <button
+                onClick={() => {
+                  playClickSound();
+                  const cap = (window as any).Capacitor;
+                  if (cap && cap.Plugins && cap.Plugins.App) {
+                    cap.Plugins.App.exitApp();
+                  } else {
+                    window.close();
+                    setIsExitDialogOpen(false);
+                  }
+                }}
+                className="flex-1 py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-rose-500/10"
+              >
+                بله، خروج از برنامه
+              </button>
+              
+              <button
+                onClick={() => {
+                  playClickSound();
+                  setIsExitDialogOpen(false);
+                }}
+                className="flex-1 py-3 bg-slate-900 hover:bg-slate-850 text-slate-300 font-bold rounded-xl border border-slate-800 text-xs transition-colors cursor-pointer"
+              >
+                خیر، انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

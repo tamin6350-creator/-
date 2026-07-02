@@ -43,9 +43,9 @@ export const AnalogClock: React.FC = () => {
   }).format(time);
 
   return (
-    <div id="analog-clock-container" className="flex items-center gap-4 bg-slate-900/40 hover:bg-slate-900/60 transition-colors border border-slate-800/80 p-3 rounded-2xl">
+    <div id="analog-clock-container" className="flex flex-col items-center justify-center bg-[#121215]/90 hover:bg-[#16161a] transition-all duration-300 border border-slate-800 p-3 rounded-2xl w-36 shadow-lg shadow-black/40">
       {/* SVG Clock Face */}
-      <div className="relative w-14 h-14 rounded-full bg-[#121215] border-2 border-slate-800 flex items-center justify-center shadow-inner">
+      <div className="relative w-16 h-16 rounded-full bg-[#0a0a0c] border-2 border-slate-800/80 flex items-center justify-center shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]">
         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
           {/* Hour markers */}
           {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((deg) => (
@@ -56,7 +56,7 @@ export const AnalogClock: React.FC = () => {
               x2="50"
               y2="13"
               className="stroke-slate-700"
-              strokeWidth="2"
+              strokeWidth="2.5"
               strokeLinecap="round"
               transform={`rotate(${deg} 50 50)`}
             />
@@ -103,12 +103,12 @@ export const AnalogClock: React.FC = () => {
         </svg>
       </div>
 
-      {/* Stacked Dates */}
-      <div className="flex flex-col text-right justify-center">
+      {/* Stacked Dates - Placed sequentially under the clock */}
+      <div className="flex flex-col text-center items-center mt-2 w-full">
         <span className="text-[11px] font-extrabold text-amber-500 tracking-normal leading-tight">
           {shamsiDate}
         </span>
-        <span className="text-[9px] font-bold text-slate-300 mt-0.5 leading-tight">
+        <span className="text-[9px] font-bold text-slate-300 mt-1 leading-tight">
           {gregorianPersianDate} (میلادی)
         </span>
         <span className="text-[9px] font-mono text-slate-500 mt-0.5 leading-none font-bold">

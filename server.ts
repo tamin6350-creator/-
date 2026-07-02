@@ -10,6 +10,17 @@ async function startServer() {
 
   app.use(express.json());
 
+  // CORS middleware for hybrid apps, android wrappers, widgets, and local preview environments
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // Popular presets with realistic initial values
   const presets = [
     { key: "geram18", title: "طلای ۱۸ عیار (گرم)", price: "4,150,000", change: "+12,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
