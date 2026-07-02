@@ -86,19 +86,17 @@ export default function App() {
 
   // Mobile API URL resolver (prevents 404 relative fetch on Android WebView/APK)
   const getApiUrl = (path: string) => {
-    const isLocalOrWebview = 
-      window.location.protocol.startsWith("file") || 
-      window.location.protocol.startsWith("capacitor") || 
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1" ||
-      window.location.origin.includes("3000") ||
-      !window.location.origin.startsWith("http");
+    // If we are strictly on localhost:3000 or similar local dev ports we can use relative,
+    // otherwise we should always hit the secure live deployed URL to prevent any webview/mobile issues.
+    const isDevelopmentWeb = 
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && 
+      (window.location.port === "3000");
 
-    if (isLocalOrWebview) {
-      // Connect to the live deployed server URL
-      return `https://ais-dev-t2ysp5iox5erolv52rewic-202927278845.us-east1.run.app${path}`;
+    if (isDevelopmentWeb) {
+      return path;
     }
-    return path;
+    // Always fall back to the production API endpoint for mobile, WebViews, Capacitor, and production deployments
+    return `https://ais-dev-t2ysp5iox5erolv52rewic-202927278845.us-east1.run.app${path}`;
   };
 
   // --- Initial Mount & Load Storage ---
@@ -203,15 +201,6 @@ export default function App() {
 
   // --- Core Pricing Fetch Handler ---
   const fetchData = async (isManual = false) => {
-    // A. Check offline status immediately to prevent hanging loads
-    if (!navigator.onLine) {
-      setIsOffline(true);
-      setErrorMessage("ارتباط با اینترنت برقرار نیست. در حال نمایش اطلاعات ذخیره‌شده.");
-      setRefreshing(false);
-      setLoading(false);
-      return;
-    }
-
     if (isManual) setRefreshing(true);
     else setLoading(true);
 
@@ -700,14 +689,6 @@ export default function App() {
 
         </div>
       </header>
-
-      {/* ERROR MESSAGE BAR */}
-      {errorMessage && (
-        <div className="bg-amber-500/10 border-y border-amber-500/20 py-2.5 px-4 text-center text-xs text-amber-400 flex items-center justify-center gap-2">
-          <AlertTriangle className="w-4 h-4" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
 
       {/* MAIN CONTAINER */}
       <main id="app-body" className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6">
