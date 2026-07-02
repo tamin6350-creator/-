@@ -86,8 +86,6 @@ export default function App() {
 
   // Mobile API URL resolver (prevents 404 relative fetch on Android WebView/APK)
   const getApiUrl = (path: string) => {
-    // If we are strictly on localhost:3000 or similar local dev ports we can use relative,
-    // otherwise we should always hit the secure live deployed URL to prevent any webview/mobile issues.
     const isDevelopmentWeb = 
       (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && 
       (window.location.port === "3000");
@@ -95,8 +93,15 @@ export default function App() {
     if (isDevelopmentWeb) {
       return path;
     }
-    // Always fall back to the production API endpoint for mobile, WebViews, Capacitor, and production deployments
-    return `https://ais-dev-t2ysp5iox5erolv52rewic-202927278845.us-east1.run.app${path}`;
+
+    // If we are in the browser and the protocol is HTTP/HTTPS, and hostname is not localhost/127.0.0.1
+    if (window.location.protocol.startsWith("http") && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return `${window.location.origin}${path}`;
+    }
+
+    // On Capacitor / Android WebView (which might have protocol capacitor:// or file:// or host localhost on different ports)
+    // we MUST route to our public, authenticated shared server URL to bypass dev auth constraints
+    return `https://ais-pre-t2ysp5iox5erolv52rewic-202927278845.us-east1.run.app${path}`;
   };
 
   // --- Initial Mount & Load Storage ---
@@ -201,8 +206,11 @@ export default function App() {
 
   // --- Core Pricing Fetch Handler ---
   const fetchData = async (isManual = false) => {
-    if (isManual) setRefreshing(true);
-    else setLoading(true);
+    if (isManual) {
+      setRefreshing(true);
+    } else if (allItems.length === 0) {
+      setLoading(true);
+    }
 
     try {
       const url = getApiUrl("/api/prices");
@@ -622,40 +630,7 @@ export default function App() {
               </span>
             </div>
 
-            {/* Interval Selection */}
-            <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-800/80 p-1 rounded-xl text-xs shadow-inner">
-              <span className="text-[9px] text-slate-500 pr-1.5">فرکانس:</span>
-              <button
-                onClick={() => handleIntervalChange(10)}
-                className={`px-2 py-0.5 rounded-lg cursor-pointer text-[10px] transition-all ${
-                  pollingInterval === 10000 ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                ۱۰ث
-              </button>
-              <button
-                onClick={() => handleIntervalChange(30)}
-                className={`px-2 py-0.5 rounded-lg cursor-pointer text-[10px] transition-all ${
-                  pollingInterval === 30000 ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                ۳۰ث
-              </button>
-              <button
-                onClick={() => handleIntervalChange(60)}
-                className={`px-2 py-0.5 rounded-lg cursor-pointer text-[10px] transition-all ${
-                  pollingInterval === 60000 ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                ۶۰ث
-              </button>
-            </div>
 
-            {/* Countdown Badge */}
-            <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-800/80 px-2.5 py-1.5 rounded-xl text-xs font-mono text-slate-300 shadow-inner">
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span>{countdown}ث</span>
-            </div>
 
             {/* Sound Toggler */}
             <button
