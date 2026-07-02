@@ -27,6 +27,88 @@ const STATIC_FALLBACK_PRICES: PriceItem[] = [
   { key: "price_aed", title: "درهم امارات", price: "167,800", change: "+450", percent: "+0.27%", time: "۱۴:۳۲:۱۱" }
 ];
 
+const fetchDirectlyFromTgjuClient = async (): Promise<PriceItem[]> => {
+  const proxies = [
+    "https://corsproxy.io/?https://www.tgju.org/",
+    "https://api.allorigins.win/raw?url=https://www.tgju.org/"
+  ];
+
+  for (const proxyUrl of proxies) {
+    try {
+      console.log(`Trying proxy: ${proxyUrl}`);
+      const response = await fetch(proxyUrl);
+      if (!response.ok) continue;
+      const html = await response.text();
+      
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const rows = doc.querySelectorAll("[data-market-row]");
+      
+      if (rows.length === 0) {
+        console.warn(`Proxy ${proxyUrl} returned HTML but 0 elements found`);
+        continue;
+      }
+      
+      const items: PriceItem[] = [];
+      
+      rows.forEach((row) => {
+        const key = row.getAttribute("data-market-row");
+        if (!key) return;
+        
+        let title = "";
+        const th = row.querySelector("th");
+        const titleCell = row.querySelector(".market-cell-title");
+        const firstTd = row.querySelector("td");
+        
+        if (th) title = th.textContent?.trim() || "";
+        else if (titleCell) title = titleCell.textContent?.trim() || "";
+        else if (firstTd) title = firstTd.textContent?.trim() || "";
+        
+        title = title.replace(/\s+/g, " ");
+        
+        const thLink = row.querySelector("th a");
+        const tdLink = row.querySelector("td a");
+        if (thLink) {
+          title = thLink.textContent?.trim() || title;
+        } else if (tdLink && !title) {
+          title = tdLink.textContent?.trim() || title;
+        }
+        
+        const priceCell = row.querySelector(".info-price") || row.querySelector(".market-cell-price") || row.querySelector("td:nth-child(2)");
+        let price = "";
+        if (priceCell) {
+          const valSpan = priceCell.querySelector(".value");
+          price = valSpan ? valSpan.textContent?.trim() || "" : priceCell.textContent?.trim() || "";
+        }
+        
+        const changeCell = row.querySelector(".info-change") || row.querySelector(".market-cell-change") || row.querySelector("td:nth-child(3)");
+        const change = changeCell ? changeCell.textContent?.trim() || "" : "";
+        
+        const percentCell = row.querySelector(".info-percent") || row.querySelector(".market-cell-percent") || row.querySelector("td:nth-child(4)");
+        const percent = percentCell ? percentCell.textContent?.trim() || "" : "";
+        
+        const timeCell = row.querySelector(".info-time") || row.querySelector(".market-cell-time") || row.querySelector("td:nth-child(5)");
+        const time = timeCell ? timeCell.textContent?.trim() || "" : "";
+        
+        if (key && title && price) {
+          if (!items.some(item => item.key === key)) {
+            items.push({ key, title, price, change, percent, time });
+          }
+        }
+      });
+      
+      if (items.length > 0) {
+        console.log(`Successfully parsed ${items.length} items from proxy ${proxyUrl}`);
+        return items;
+      }
+    } catch (e) {
+      console.warn(`Failed to fetch from proxy ${proxyUrl}:`, e);
+    }
+  }
+  
+  throw new Error("All client-side fallback proxies failed to fetch TGJU");
+};
+
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -290,7 +372,52 @@ export default function App() {
       processPriceHistoryAndAlerts(updatedItems);
 
     } catch (err: any) {
-      console.error(err);
+      console.warn("Main server API failed, trying client-side public proxy bypass...", err);
+      
+      try {
+        const proxyItems = await fetchDirectlyFromTgjuClient();
+        
+        setApiSource("tgju-client-proxy");
+        setLastUpdated(new Date());
+        setIsOffline(false);
+        setErrorMessage("");
+
+        const PersianTime = new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const PersianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { day: "numeric", month: "long", year: "numeric" }).format(new Date());
+        const fullTimeStr = `${PersianDate} ساعت ${PersianTime}`;
+        setLastUpdatedTime(fullTimeStr);
+        localStorage.setItem("tgju_last_updated_time", fullTimeStr);
+
+        let updatedItems = [...proxyItems];
+        
+        customItems.forEach(custom => {
+          if (!updatedItems.some(ui => ui.key === custom.key)) {
+            let parsedPrice = parseFloat(custom.price.replace(/,/g, ""));
+            if (isNaN(parsedPrice)) parsedPrice = 100000;
+            
+            const changePct = (Math.random() * 0.1 - 0.05) / 100;
+            const drift = parsedPrice * changePct;
+            const finalPrice = Math.round(parsedPrice + drift);
+
+            updatedItems.push({
+              key: custom.key,
+              title: custom.title,
+              price: finalPrice.toLocaleString("en-US"),
+              change: (drift >= 0 ? "+" : "") + Math.round(drift).toLocaleString("en-US"),
+              percent: (changePct >= 0 ? "+" : "") + (changePct * 100).toFixed(2) + "%",
+              time: new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+            });
+          }
+        });
+
+        setAllItems(updatedItems);
+        localStorage.setItem("tgju_cached_prices", JSON.stringify(updatedItems));
+        processPriceHistoryAndAlerts(updatedItems);
+        return; // Successfully updated via client proxy
+      } catch (proxyErr) {
+        console.error("Client-side direct proxies also failed:", proxyErr);
+      }
+
       setIsOffline(true);
       setErrorMessage("ارتباط با سرور مرکزی با اختلال مواجه شد. در حال استفاده از اطلاعات محلی.");
       

@@ -123,14 +123,24 @@ export const PriceCard: React.FC<PriceCardProps> = ({ item, history, onClickAler
   return (
     <div
       id={`card-${item.key}`}
-      className={`relative overflow-hidden rounded-[32px] border p-7 transition-all duration-300 flex flex-col justify-between ${theme.bg} ${
+      className={`relative overflow-hidden rounded-[32px] border p-7 transition-all duration-500 flex flex-col justify-between ${theme.bg} ${
         flash === "up"
-          ? "bg-emerald-950/40 border-emerald-500/50 scale-[1.01]"
+          ? "border-emerald-500/60 shadow-[0_0_25px_rgba(16,185,129,0.15)] scale-[1.01]"
           : flash === "down"
-          ? "bg-rose-950/40 border-rose-500/50 scale-[1.01]"
+          ? "border-rose-500/60 shadow-[0_0_25px_rgba(244,63,94,0.15)] scale-[1.01]"
           : ""
       }`}
     >
+      {/* Subtle background update flash */}
+      <div
+        className={`absolute inset-0 transition-all duration-1000 pointer-events-none ${
+          flash === "up"
+            ? "bg-emerald-500/10 opacity-100"
+            : flash === "down"
+            ? "bg-rose-500/10 opacity-100"
+            : "opacity-0"
+        }`}
+      />
       {/* Alert status indicator */}
       {hasActiveAlert && (
         <span className="absolute top-4 left-4 flex h-2.5 w-2.5">
