@@ -118,7 +118,7 @@ export const AndroidWidget: React.FC<AndroidWidgetProps> = ({ items, onRefresh }
 
             {/* Bottom Actions Row */}
             <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[8px] text-slate-400 font-medium">
-              <span>* به‌روزرسانی خودکار هوشمند هر ۳۰ ثانیه</span>
+              <span>سیستم هوشمند زربین</span>
               
               <button 
                 onClick={() => { playClickSound(); onRefresh(); }}

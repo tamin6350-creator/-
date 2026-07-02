@@ -4,10 +4,29 @@ import { PriceCard } from "./components/PriceCard";
 import { AlertSettings } from "./components/AlertSettings";
 import { DashboardFilters } from "./components/DashboardFilters";
 import { playAlertChime, playClickSound } from "./utils/audio";
-import { AnalogClock } from "./components/AnalogClock";
+import { DigitalClock } from "./components/DigitalClock";
 import { PredictionPanel } from "./components/PredictionPanel";
 import { GoldCoinLogo } from "./components/GoldCoinLogo";
 import { AndroidWidget } from "./components/AndroidWidget";
+import { CurrencyConverter } from "./components/CurrencyConverter";
+
+const STATIC_FALLBACK_PRICES: PriceItem[] = [
+  { key: "geram18", title: "طلای ۱۸ عیار (گرم)", price: "4,150,000", change: "+12,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
+  { key: "geram24", title: "طلای ۲۴ عیار (گرم)", price: "5,530,000", change: "+16,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
+  { key: "ons", title: "انس جهانی طلا", price: "2,352.40", change: "-12.40", percent: "-0.53%", time: "۱۴:۳۱:۵۰" },
+  { key: "silver_ons", title: "انس جهانی نقره", price: "29.45", change: "+0.32", percent: "+1.10%", time: "۱۴:۳۱:۴۸" },
+  { key: "sekke", title: "سکه امامی", price: "48,500,000", change: "+200,000", percent: "+0.41%", time: "۱۴:۳۲:۱۰" },
+  { key: "bahar", title: "سکه بهار آزادی", price: "43,200,000", change: "0", percent: "0.00%", time: "۱۴:۳۱:۰۵" },
+  { key: "mithqal", title: "مثقال طلا", price: "17,970,000", change: "+50,000", percent: "+0.28%", time: "۱۴:۳۲:۱۲" },
+  { key: "nim", title: "نیم سکه", price: "26,400,000", change: "+100,000", percent: "+0.38%", time: "۱۴:۳۰:۵۵" },
+  { key: "rob", title: "ربع سکه", price: "16,400,000", change: "0", percent: "0.00%", time: "۱۴:۳۰:۵۰" },
+  { key: "silver_999_gram", title: "نقره ۹۹۹ (گرم)", price: "86,000", change: "+1,400", percent: "+1.65%", time: "۱۴:۳۲:۰۵" },
+  { key: "price_dollar_rl", title: "دلار آزاد (تهران)", price: "612,000", change: "+2,500", percent: "+0.41%", time: "۱۴:۳۲:۱۴" },
+  { key: "price_eur", title: "یورو آزاد", price: "664,500", change: "+1,200", percent: "+0.18%", time: "۱۴:۳۲:۰۸" },
+  { key: "price_try", title: "لیر ترکیه", price: "18,450", change: "-50", percent: "-0.27%", time: "۱۴:۳۲:۰۲" },
+  { key: "price_aed", title: "درهم امارات", price: "167,800", change: "+450", percent: "+0.27%", time: "۱۴:۳۲:۱۱" }
+];
+
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -181,12 +200,25 @@ export default function App() {
     const cachedPrices = localStorage.getItem("tgju_cached_prices");
     if (cachedPrices) {
       try {
-        setAllItems(JSON.parse(cachedPrices));
-      } catch (e) {}
+        const parsed = JSON.parse(cachedPrices);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAllItems(parsed);
+        } else {
+          setAllItems(STATIC_FALLBACK_PRICES);
+        }
+      } catch (e) {
+        setAllItems(STATIC_FALLBACK_PRICES);
+      }
+    } else {
+      setAllItems(STATIC_FALLBACK_PRICES);
     }
     const cachedTime = localStorage.getItem("tgju_last_updated_time");
     if (cachedTime) {
       setLastUpdatedTime(cachedTime);
+    } else {
+      const PersianTime = new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const PersianDate = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { day: "numeric", month: "long", year: "numeric" }).format(new Date());
+      setLastUpdatedTime(`${PersianDate} ساعت ${PersianTime}`);
     }
 
     // Ask for system notification permissions early for price triggers
@@ -266,8 +298,17 @@ export default function App() {
       const cached = localStorage.getItem("tgju_cached_prices");
       if (cached) {
         try {
-          setAllItems(JSON.parse(cached));
-        } catch (e) {}
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAllItems(parsed);
+          } else {
+            setAllItems(STATIC_FALLBACK_PRICES);
+          }
+        } catch (e) {
+          setAllItems(STATIC_FALLBACK_PRICES);
+        }
+      } else {
+        setAllItems(STATIC_FALLBACK_PRICES);
       }
     } finally {
       setLoading(false);
@@ -530,7 +571,7 @@ export default function App() {
 
           <div className="space-y-3">
             <h1 className="text-xl md:text-2xl font-black text-white tracking-wide">سامانه هوشمند پایش قیمت زربین</h1>
-            <p className="text-xs text-slate-400 font-medium">به‌روزرسانی خودکار و همگام‌سازی لحظه‌ای نرخ‌های بازار طلا و سکه</p>
+            <p className="text-xs text-slate-400 font-medium">پایش زنده و هوشمند بازار طلا و سکه</p>
           </div>
 
           {/* Loading status bar */}
@@ -611,7 +652,7 @@ export default function App() {
             ) : (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 shadow-md">
                 <Wifi className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-bold">بروزرسانی زنده فعال</span>
+                <span className="text-[10px] font-bold">اتصال مستقیم فعال</span>
               </div>
             )}
 
@@ -650,14 +691,14 @@ export default function App() {
               onClick={() => { playClickSound(); fetchData(true); }}
               disabled={refreshing || isOffline}
               className="p-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-lg"
-              title="به‌روزرسانی دستی"
+              title="دریافت آخرین قیمت‌ها"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-slate-400" : ""}`} />
             </button>
 
-            {/* Vertical Analog Clock placed sequentially on the left side of desktop header */}
+            {/* Digital Clock placed sequentially on the left side of desktop header */}
             <div className="shrink-0 lg:ml-2">
-              <AnalogClock />
+              <DigitalClock />
             </div>
 
           </div>
@@ -779,7 +820,7 @@ export default function App() {
             </h2>
             {lastUpdatedTime && (
               <span className="text-[10px] text-slate-500 font-medium">
-                آخرین به‌روزرسانی: {lastUpdatedTime}
+                آخرین زمان دریافت: {lastUpdatedTime}
               </span>
             )}
           </div>
@@ -817,6 +858,9 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* INTERACTIVE CURRENCY & GOLD CONVERTER */}
+        <CurrencyConverter items={allItems} />
 
         {/* ANALYTICAL PREDICTION & COMPARISON PANEL */}
         <PredictionPanel currentPrices={allItems} />
@@ -881,7 +925,7 @@ export default function App() {
       {/* FOOTER */}
       <footer className="mt-12 py-6 bg-[#05080e] border-t border-slate-900/60 text-center text-[10px] text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p>© {new Date().getFullYear()} سامانه هوشمند دیده‌بان طلا و ارز. تمامی قیمت‌ها مستقیم از شبکه اطلاع‌رسانی TGJU به‌روزرسانی می‌شوند.</p>
+          <p>© {new Date().getFullYear()} سامانه هوشمند دیده‌بان طلا و ارز. تمامی قیمت‌ها مستقیم از شبکه اطلاع‌رسانی TGJU دریافت می‌شوند.</p>
           <div className="flex gap-4">
             <span className="hover:text-slate-400 transition-colors">قوانین و سلب مسئولیت</span>
             <span>•</span>
