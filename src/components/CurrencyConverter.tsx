@@ -23,9 +23,9 @@ export const CurrencyConverter: React.FC<CurrencyConverterProps> = ({ items }) =
     { key: "eur", title: "یورو اروپا", unitName: "یورو", apiKey: "price_eur", presetFactor: 664500 },
     { key: "try", title: "لیر ترکیه", unitName: "لیر", apiKey: "price_try", presetFactor: 18450 },
     { key: "aed", title: "درهم امارات", unitName: "درهم", apiKey: "price_aed", presetFactor: 167800 },
-    { key: "gold18k", title: "طلای ۱۸ عیار", unitName: "گرم", apiKey: "geram18", presetFactor: 4150000 },
-    { key: "sekke", title: "سکه امامی", unitName: "سکه", apiKey: "sekke", presetFactor: 48500000 },
-    { key: "mithqal", title: "مثقال طلا", unitName: "مثقال", apiKey: "mithqal", presetFactor: 17970000 },
+    { key: "gold18k", title: "طلای ۱۸ عیار", unitName: "گرم", apiKey: "geram18", presetFactor: 41500000 },
+    { key: "sekke", title: "سکه امامی", unitName: "سکه", apiKey: "sekke", presetFactor: 485000000 },
+    { key: "mithqal", title: "مثقال طلا", unitName: "مثقال", apiKey: "mithqal", presetFactor: 179700000 },
   ];
 
   const [fromAsset, setFromAsset] = useState<string>("dollar");

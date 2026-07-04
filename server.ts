@@ -21,18 +21,18 @@ async function startServer() {
     next();
   });
 
-  // Popular presets with realistic initial values
+  // Popular presets with realistic initial values (all correctly scaled to Iranian Rials to match TGJU format)
   const presets = [
-    { key: "geram18", title: "طلای ۱۸ عیار (گرم)", price: "4,150,000", change: "+12,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
-    { key: "geram24", title: "طلای ۲۴ عیار (گرم)", price: "5,530,000", change: "+16,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
+    { key: "geram18", title: "طلای ۱۸ عیار (گرم)", price: "41,500,000", change: "+120,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
+    { key: "geram24", title: "طلای ۲۴ عیار (گرم)", price: "55,330,000", change: "+160,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
     { key: "ons", title: "انس جهانی طلا", price: "2,352.40", change: "-12.40", percent: "-0.53%", time: "۱۴:۳۱:۵۰" },
     { key: "silver_ons", title: "انس جهانی نقره", price: "29.45", change: "+0.32", percent: "+1.10%", time: "۱۴:۳۱:۴۸" },
-    { key: "sekke", title: "سکه امامی", price: "48,500,000", change: "+200,000", percent: "+0.41%", time: "۱۴:۳۲:۱۰" },
-    { key: "bahar", title: "سکه بهار آزادی", price: "43,200,000", change: "0", percent: "0.00%", time: "۱۴:۳۱:۰۵" },
-    { key: "mithqal", title: "مثقال طلا", price: "17,970,000", change: "+50,000", percent: "+0.28%", time: "۱۴:۳۲:۱۲" },
-    { key: "nim", title: "نیم سکه", price: "26,400,000", change: "+100,000", percent: "+0.38%", time: "۱۴:۳۰:۵۵" },
-    { key: "rob", title: "ربع سکه", price: "16,400,000", change: "0", percent: "0.00%", time: "۱۴:۳۰:۵۰" },
-    { key: "silver_999_gram", title: "نقره ۹۹۹ (گرم)", price: "86,000", change: "+1,400", percent: "+1.65%", time: "۱۴:۳۲:۰۵" },
+    { key: "sekke", title: "سکه امامی", price: "485,000,000", change: "+2,000,000", percent: "+0.41%", time: "۱۴:۳۲:۱۰" },
+    { key: "bahar", title: "سکه بهار آزادی", price: "432,000,000", change: "0", percent: "0.00%", time: "۱۴:۳۱:۰۵" },
+    { key: "mithqal", title: "مثقال طلا", price: "179,700,000", change: "+500,000", percent: "+0.28%", time: "۱۴:۳۲:۱۲" },
+    { key: "nim", title: "نیم سکه", price: "264,000,000", change: "+100,000", percent: "+0.38%", time: "۱۴:۳۰:۵۵" },
+    { key: "rob", title: "ربع سکه", price: "164,000,000", change: "0", percent: "0.00%", time: "۱۴:۳۰:۵۰" },
+    { key: "silver_999_gram", title: "نقره ۹۹۹ (گرم)", price: "860,000", change: "+14,000", percent: "+1.65%", time: "۱۴:۳۲:۰۵" },
     { key: "price_dollar_rl", title: "دلار آزاد (تهران)", price: "612,000", change: "+2,500", percent: "+0.41%", time: "۱۴:۳۲:۱۴" },
     { key: "price_eur", title: "یورو آزاد", price: "664,500", change: "+1,200", percent: "+0.18%", time: "۱۴:۳۲:۰۸" },
     { key: "price_try", title: "لیر ترکیه", price: "18,450", change: "-50", percent: "-0.27%", time: "۱۴:۳۲:۰۲" },
@@ -42,21 +42,43 @@ async function startServer() {
   // Store simulation states to introduce organic fluctuations
   const simulationPrices = new Map<string, number>();
 
+  // Helper to fetch TGJU HTML with proxy fallbacks (bypasses datacenter Cloudflare blocks)
+  async function fetchTGJUHtml(): Promise<string> {
+    const urls = [
+      "https://www.tgju.org/",
+      "https://corsproxy.io/?https://www.tgju.org/",
+      "https://api.allorigins.win/raw?url=https://www.tgju.org/"
+    ];
+    
+    for (const url of urls) {
+      try {
+        console.log(`Backend attempting TGJU fetch: ${url}`);
+        const response = await axios.get(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache"
+          },
+          timeout: 5000
+        });
+        
+        if (response.data && typeof response.data === "string" && response.data.includes("data-market-row")) {
+          console.log(`Successfully fetched TGJU HTML from ${url} (length: ${response.data.length})`);
+          return response.data;
+        }
+      } catch (err: any) {
+        console.warn(`Backend failed to fetch TGJU via ${url}: ${err.message}`);
+      }
+    }
+    throw new Error("All backend TGJU fetch options failed");
+  }
+
   // API to fetch prices from tgju.org
   app.get("/api/prices", async (req, res) => {
     try {
-      const response = await axios.get("https://www.tgju.org/", {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-          "Accept-Language": "fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7",
-          "Cache-Control": "no-cache",
-          "Pragma": "no-cache"
-        },
-        timeout: 4000
-      });
-
-      const html = response.data;
+      const html = await fetchTGJUHtml();
       const $ = cheerio.load(html);
       const items: any[] = [];
 

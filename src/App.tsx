@@ -11,16 +11,16 @@ import { AndroidWidget } from "./components/AndroidWidget";
 import { CurrencyConverter } from "./components/CurrencyConverter";
 
 const STATIC_FALLBACK_PRICES: PriceItem[] = [
-  { key: "geram18", title: "طلای ۱۸ عیار (گرم)", price: "4,150,000", change: "+12,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
-  { key: "geram24", title: "طلای ۲۴ عیار (گرم)", price: "5,530,000", change: "+16,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
+  { key: "geram18", title: "طلای ۱۸ عیار (گرم)", price: "41,500,000", change: "+120,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
+  { key: "geram24", title: "طلای ۲۴ عیار (گرم)", price: "55,330,000", change: "+160,000", percent: "+0.29%", time: "۱۴:۳۲:۱۵" },
   { key: "ons", title: "انس جهانی طلا", price: "2,352.40", change: "-12.40", percent: "-0.53%", time: "۱۴:۳۱:۵۰" },
   { key: "silver_ons", title: "انس جهانی نقره", price: "29.45", change: "+0.32", percent: "+1.10%", time: "۱۴:۳۱:۴۸" },
-  { key: "sekke", title: "سکه امامی", price: "48,500,000", change: "+200,000", percent: "+0.41%", time: "۱۴:۳۲:۱۰" },
-  { key: "bahar", title: "سکه بهار آزادی", price: "43,200,000", change: "0", percent: "0.00%", time: "۱۴:۳۱:۰۵" },
-  { key: "mithqal", title: "مثقال طلا", price: "17,970,000", change: "+50,000", percent: "+0.28%", time: "۱۴:۳۲:۱۲" },
-  { key: "nim", title: "نیم سکه", price: "26,400,000", change: "+100,000", percent: "+0.38%", time: "۱۴:۳۰:۵۵" },
-  { key: "rob", title: "ربع سکه", price: "16,400,000", change: "0", percent: "0.00%", time: "۱۴:۳۰:۵۰" },
-  { key: "silver_999_gram", title: "نقره ۹۹۹ (گرم)", price: "86,000", change: "+1,400", percent: "+1.65%", time: "۱۴:۳۲:۰۵" },
+  { key: "sekke", title: "سکه امامی", price: "485,000,000", change: "+2,000,000", percent: "+0.41%", time: "۱۴:۳۲:۱۰" },
+  { key: "bahar", title: "سکه بهار آزادی", price: "432,000,000", change: "0", percent: "0.00%", time: "۱۴:۳۱:۰۵" },
+  { key: "mithqal", title: "مثقال طلا", price: "179,700,000", change: "+500,000", percent: "+0.28%", time: "۱۴:۳۲:۱۲" },
+  { key: "nim", title: "نیم سکه", price: "264,000,000", change: "+1,000,000", percent: "+0.38%", time: "۱۴:۳۰:۵۵" },
+  { key: "rob", title: "ربع سکه", price: "164,000,000", change: "0", percent: "0.00%", time: "۱۴:۳۰:۵۰" },
+  { key: "silver_999_gram", title: "نقره ۹۹۹ (گرم)", price: "860,000", change: "+14,000", percent: "+1.65%", time: "۱۴:۳۲:۰۵" },
   { key: "price_dollar_rl", title: "دلار آزاد (تهران)", price: "612,000", change: "+2,500", percent: "+0.41%", time: "۱۴:۳۲:۱۴" },
   { key: "price_eur", title: "یورو آزاد", price: "664,500", change: "+1,200", percent: "+0.18%", time: "۱۴:۳۲:۰۸" },
   { key: "price_try", title: "لیر ترکیه", price: "18,450", change: "-50", percent: "-0.27%", time: "۱۴:۳۲:۰۲" },
@@ -149,6 +149,7 @@ export default function App() {
   const [pricesHistory, setPricesHistory] = useState<Record<string, number[]>>({});
   
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [apiSource, setApiSource] = useState<"tgju" | "simulation" | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -319,6 +320,7 @@ export default function App() {
     // 8. Bulletproof safety fallback to automatically close loading splash screen after 4 seconds max
     const safetyTimer = setTimeout(() => {
       setLoading(false);
+      setHasLoadedOnce(true);
     }, 4000);
 
     return () => {
@@ -333,7 +335,7 @@ export default function App() {
   const fetchData = async (isManual = false) => {
     if (isManual) {
       setRefreshing(true);
-    } else if (allItems.length === 0) {
+    } else if (!hasLoadedOnce && allItems.length === 0) {
       setLoading(true);
     }
 
@@ -482,6 +484,7 @@ export default function App() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setHasLoadedOnce(true);
       setCountdown(pollingInterval / 1000);
     }
   };
@@ -766,7 +769,10 @@ export default function App() {
           {/* Offline local access fallback */}
           {allItems.length > 0 && (
             <button
-              onClick={() => setLoading(false)}
+              onClick={() => {
+                setLoading(false);
+                setHasLoadedOnce(true);
+              }}
               className="w-full py-3 bg-slate-900/60 hover:bg-slate-850 text-slate-300 hover:text-white rounded-xl border border-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg"
             >
               <span>ورود فوری آفلاین (با اطلاعات قبلی)</span>
